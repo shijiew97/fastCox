@@ -1,0 +1,136 @@
+---
+title: "Shijie Wang"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(knitr)
+library(survival)
+library(reticulate)
+library(ggplot2)
+```
+
+## Cox proportional hazards model
+
+The partial likelihood for Cox proportional harzards model is given below,
+$$
+l(\beta) = \sum_{i=1}^{K}X_i^{\text{T}}\beta - \sum_{i=1}^{K} \text{log}(\sum_{l \in R(t_i)}e^{X_l^{\text{T}}\beta})
+$$
+
+
+The loss function for Generative Bootstrap sampler (GBS) is then to be
+$$
+\hat{G}=\underset{G}{\mathrm{argmin}} \  \mathbb{E}_w \bigg[  \sum_{i=1}^{K}w_i \cdot [X_i^{\text{T}} \cdot G(w) - \text{log}(\sum_{l \in R(t_i)}e^{X_l^{\text{T}} \cdot G(w)})] \bigg]
+$$
+
+The simulation study is based on lung cancer data in the survival R package. Some description on covariates are: `Time`: Survival time in days and `status`: censoring status 1 = censored, 2 = dead.
+```{R}
+data("lung")
+head(lung)
+```
+
+```{R}
+df = na.omit(lung)
+covariates = c("age", "sex",  "ph.karno", "ph.ecog", "wt.loss")
+p = length(covariates)
+X = df[covariates]
+N = 20
+size = 1000
+#GBS
+file = "C:\\Users\\Shijie Wang\\Desktop\\Research Notes\\GBS and NPMLE code\\GBS_Cox_proportional_hazard_model.py"
+reticulate::source_python(file,envir = NULL,convert = FALSE)
+Beta = py$B
+#nonparametric bootstrap
+boot_cox = matrix(NA, nrow=size, ncol=p)
+for(i in 1:size){
+  set.seed(2021+i^2)
+  b_index = sample(nrow(df),size=nrow(df),replace=T)
+  res.cox = coxph(Surv(time,status)~age+sex+ph.karno+ph.ecog+wt.loss,data=df[b_index,])
+  boot_cox[i,] = res.cox$coefficients
+}
+#get data
+B = matrix(unlist(Beta),nrow=1)
+B_WLB = matrix(boot_cox,nrow=1)
+Theta_dist = data.frame("value"=t(cbind(B,B_WLB)))
+Theta_dist["Theta"] = factor(rep(rep(paste("b",1:p,sep=""),each=size),times=2),levels=paste("b",1:10,sep=""))
+Theta_dist["Method"] = c(rep("GBS", size*p),rep("WLB", size*p))
+#plot
+ggplot(data=Theta_dist)+geom_boxplot(aes(x=Theta,y=value,color=Method))+ylim(-2,2)+theme_minimal()
+```
+
+\pagebreak
+
+## GBS-NPMLE Simulation study Result
+
+$$
+\text{L1 Error} = \frac{1}{n}\sum_{i=1}^n \bigg\{\mid   \theta_i - E(\theta_i\mid y_i) \mid  \bigg\}
+$$
+
+$$
+\text{Relative L1 Error} = \frac{\text{L1 error}_\text{NPMLE}}{\text{L1 Error}_{\text{GBS}}}
+$$
+
+```{R,echo=F,fig.height=4,fig.width=10}
+opar = par(no.readonly=T)
+par(mfrow=c(1,2))
+#boxplot
+df_eval = read.csv("C:\\Users\\Shijie Wang\\Desktop\\Research Notes\\GBS and NPMLE simulation\\Result_Eval.csv")[,-1]
+colnames(df_eval) = c("GMM","PMM","GaMM","BMM")
+boxplot(df_eval,col="white",outline=TRUE,boxwex=0.3,xlim=c(0.8,4.2),las=1,ylab="Relative L1 error",main="Evaluated by Bootstrap Distribution",cex.main=0.9,ylim=c(0.5,2.5))
+grid()
+abline(h=1,col="red",lty=5)
+#jitterplot
+df = data.frame(as.numeric(unlist(df_eval)),index=rep(c("GMM","PMM","GaMM","BMM"),each=10))
+colnames(df) = c("Error","Model")
+set.seed(2021)
+stripchart(Error~Model, data=df, vertical=TRUE, pch=4, main='Based on 100 realizations',
+           method='jitter', ylim=c(0.5,2.5), ylab="Relative L1 error", cex.main=0.9)
+grid()
+abline(h=1,col=rgb(1,0,0,0.3),lty=5)
+par(opar)
+```
+
+```{R,echo=F,fig.height=4,fig.width=10}
+opar = par(no.readonly=T)
+par(mfrow=c(1,2))
+#boxplot
+df_eval = read.csv("C:\\Users\\Shijie Wang\\Desktop\\Research Notes\\GBS and NPMLE simulation\\Result_Eval_NPMLE.csv")[,-1]
+colnames(df_eval) = c("GMM","PMM","GaMM","BMM")
+boxplot(df_eval,col="white",outline=TRUE,boxwex=0.3,xlim=c(0.8,4.2),las=1,ylab="Relative L1 error",ylim=c(0.5,2.5),main="Evaluated by NPMLE Solution",cex.main=0.9)
+grid()
+abline(h=1,col="red",lty=5)
+##plot output
+df = data.frame(as.numeric(unlist(df_eval)),index=rep(c("GMM","PMM","GaMM","BMM"),
+                                                      each=10))
+colnames(df) = c("Error","Model")
+set.seed(2021)
+stripchart(Error~Model, data=df, vertical=TRUE, pch=4, main='Based on 100 realizations',
+           method='jitter', ylim=c(0.5,2.5), cex.main=0.9, ylab="Relative L1 error",)
+grid()
+abline(h=1,col=rgb(1,0,0,0.3),lty=5)
+par(opar)
+```
+
+\pagebreak
+
+$$
+\text{Loss}:= T(M,J) = -\sum_{i=1}^n\sum_{j=1}^J w_{(j),i}\log(\sum_{m=1}^ML(y_i\mid \widehat G_M(z_{(m)},w_{(j)}) )/M)/J
+$$
+
+```{R,echo=F,fig.height=4,fig.width=10}
+##parameter setting
+m = seq(50,1000,length=20)
+K = seq(5,100,length=20)
+nn = seq(10,1100,length=20)
+##result
+df = read.csv("C:\\Users\\Shijie Wang\\Desktop\\Research Notes\\GBS and NPMLE simulation\\Result_Robust.csv")
+opar = par(no.readonly=T)
+par(mfrow=c(1,3))
+plot(x=m,y=na.omit(df[,1]),ylim=c(35,60),type="l",ylab="Loss Value",xlab="M")
+plot(x=K,y=na.omit(df[,2]),ylim=c(35,60),type="l",ylab="",xlab="K")
+plot(x=nn,y=na.omit(df[,3]),ylim=c(35,60),type="l",ylab="",xlab="N")
+par(opar)
+```
