@@ -2,7 +2,7 @@
 Applying GBS idea for fast Bootstrapping Cox PH Model. 
 
 ## Main files
-- `Fast_bootstrap_Cox_model.pgf`
+- `Fast_bootstrap_Cox_model.pdf`
   
   A written report of GMS bootstrap uncertainty compared with classical bootstrap of Cox-PH model on a real data analysis of lung cancer dataset. Details can be found in the report.
   
